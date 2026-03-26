@@ -1,0 +1,41 @@
+// ====== REMOTE CONTROL SCRIPT ======
+
+async function onResponse(context, request, response) {
+
+  let res = response;
+
+  try {
+
+    const url = request.url;
+
+    // 🔹 Chỉ tác động API game
+    if (!/garena|freefire|ff/i.test(url)) {
+      return res;
+    }
+
+    const contentType = res.headers.get("content-type") || "";
+
+    // ===== JSON HANDLE =====
+    if (contentType.includes("application/json")) {
+
+      let data = await res.text();
+
+      // 🔥 fake ổn định (giảm lỗi)
+      data = data.replace(/timeout/gi, "ok");
+
+      // 🔥 tweak nhẹ data
+      data = data.replace(/lag/gi, "smooth");
+
+      return new Response(data, res);
+    }
+
+    // ===== RESOURCE FILTER =====
+    if (/\.png|\.jpg|\.mp4|\.gif/i.test(url)) {
+      // chặn resource nặng
+      return new Response(null, { status: 204 });
+    }
+
+  } catch (e) {}
+
+  return res;
+}
