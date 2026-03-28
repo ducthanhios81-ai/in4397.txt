@@ -1,0 +1,109 @@
+async function onRequest(context, request) {
+  return request;
+}
+
+function DeH(hexString) {
+  let result = "";
+  const cleanHex = hexString.trim().replace(/\s/g, '');
+  for (let i = 0; i < cleanHex.length; i += 2) {
+    const byte = parseInt(cleanHex.substr(i, 2), 16);
+    if (!isNaN(byte)) result += String.fromCharCode(byte);
+  }
+  return result;
+}
+
+async function safeFetch(url, timeout = 5000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    return await res.text();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+async function onResponse(context, request, response) {
+
+  const KEY_URL = "https://raw.githubusercontent.com/ducthanhios81-ai/KEYSEVER/refs/heads/main/X-WAVE-FREE-ONLINE-AC";
+  const VALID_KEY = "X-WAVE-FREE-ONLINE-AC";
+
+  const INAC_URL = "https://raw.githubusercontent.com/ducthanhios81-ai/in4397.txt/refs/heads/main/in0811.txt";
+  const AC3_URL  = "https://raw.githubusercontent.com/ducthanhios81-ai/in4397.txt/refs/heads/main/3kahaj.txt";
+
+  const E_C = "ACCESS DENIED";
+  const url = request.url;
+
+  // ===== RATE LIMIT (chống spam cơ bản) =====
+  const now = Date.now();
+  context._lastReq = context._lastReq || 0;
+  if (now - context._lastReq < 300) {
+    response.statusCode = 429;
+    response.body = "Too many requests";
+    return response;
+  }
+  context._lastReq = now;
+
+  // ===== CHECK KEY (có cache) =====
+  let iAC = false;
+
+  try {
+    if (!context._cachedKey || (now - context._keyTime > 10000)) {
+      const text = await safeFetch(KEY_URL);
+      context._cachedKey = text;
+      context._keyTime = now;
+    }
+
+    if (context._cachedKey && context._cachedKey.includes(VALID_KEY)) {
+      iAC = true;
+    }
+  } catch {}
+
+  // ===== LOGIN =====
+  if (url.includes("/MajorLogin")) {
+    response.body = iAC ? "LOGIN OK" : E_C;
+    response.statusCode = iAC ? 200 : 403;
+    response.headers["Content-Type"] = "text/plain";
+    return response;
+  }
+
+  // ===== BLOCK =====
+  if (!iAC) {
+    response.statusCode = 403;
+    response.body = E_C;
+    return response;
+  }
+
+  // ===== RESOURCE =====
+  try {
+    let hexData = null;
+
+    if (url.includes("/fileinfo")) {
+      hexData = await safeFetch(INAC_URL);
+
+    } else if (url.includes("/assetindexer")) {
+      hexData = await safeFetch(AC3_URL);
+
+    } else {
+      return response;
+    }
+
+    if (!hexData) throw new Error("Fetch failed");
+
+    response.body = DeH(hexData);
+    response.statusCode = 200;
+    response.headers["Content-Type"] = "application/octet-stream";
+
+    delete response.headers["Content-Length"];
+    delete response.headers["X-Powered-By"];
+
+  } catch (e) {
+    response.statusCode = 500;
+    response.body = "Server error";
+  }
+
+  return response;
+}
